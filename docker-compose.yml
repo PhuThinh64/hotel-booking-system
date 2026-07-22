@@ -1,0 +1,58 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-hotel
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "3307:3306"
+    volumes:
+      - hotel-data:/var/lib/mysql
+      - ./database:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 180s
+    networks:
+      - hotel-network
+
+  backend:
+    build:
+      context: ./BE/Hotel_Booking
+    image: hotel-backend:v1
+    container_name: hotel-backend
+    restart: always
+    env_file:
+      - .env
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
+      UPLOAD_DIR: /app/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./storage/uploads:/app/uploads
+    networks:
+      - hotel-network
+
+  frontend:
+    build:
+      context: ./FE/hotel-booking-ui
+    image: hotel-frontend:v1
+    container_name: hotel-frontend
+    restart: always
+    ports:
+      - "5173:80"
+    networks:
+      - hotel-network
+
+volumes:
+  hotel-data:
+
+networks:
+  hotel-network:

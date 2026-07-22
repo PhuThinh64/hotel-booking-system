@@ -1,0 +1,17 @@
+spring:
+  # Cấu hình chung cho JPA và Hibernate
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+
+# Các cấu hình app khác (VNPAY, File upload)
+app:
+  vnpay:
+    frontend:
+      url: ${FRONTEND_URL:http://localhost:5173}
+file:
+  upload-dir: ${UPLOAD_DIR:/app/uploads}

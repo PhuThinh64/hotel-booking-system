@@ -1,0 +1,22 @@
+# Environment
+.env
+
+# Backend
+BE/Hotel_Booking/build/
+BE/Hotel_Booking/.gradle/
+BE/Hotel_Booking/.idea/
+
+# Frontend
+FE/hotel-booking-ui/node_modules/
+FE/hotel-booking-ui/dist/
+
+# IDE
+.idea/
+*.iml
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
