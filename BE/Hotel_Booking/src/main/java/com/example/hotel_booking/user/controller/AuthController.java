@@ -1,30 +1,55 @@
 package com.example.hotel_booking.user.controller;
 
 import com.example.hotel_booking.common.exception.ApiResponse;
-import com.example.hotel_booking.user.dto.AuthRequest;
-import com.example.hotel_booking.user.dto.AuthResponse;
-import com.example.hotel_booking.user.dto.RegisterRequest;
-import com.example.hotel_booking.user.dto.ForgotPasswordRequest;
-import com.example.hotel_booking.user.dto.ResetPasswordRequest;
+import com.example.hotel_booking.config.swagger.constants.SwaggerResponseMessages;
+import com.example.hotel_booking.config.swagger.constants.SwaggerTags;
+import com.example.hotel_booking.user.dto.*;
 import com.example.hotel_booking.user.service.impl.AuthServiceImpl;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.*;
-
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
-@Tag(name = "Authentication Management", description = "APIs dành cho việc quản lý xác thực")
+@Tag(
+        name = SwaggerTags.AUTH,
+        description = "Public authentication APIs including customer registration, login, forgot password, and reset password."
+)
 public class AuthController {
 
     private final AuthServiceImpl authService;
 
+    @Operation(
+            summary = "Customer Registration",
+            description = "Register a new customer account and initialize profile information.",
+            security = {}
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200",
+                    description = SwaggerResponseMessages.SUCCESS
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "400",
+                    description = SwaggerResponseMessages.BAD_REQUEST
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "409",
+                    description = SwaggerResponseMessages.CONFLICT
+            )
+    })
     @PostMapping("/register")
-    @Operation(summary = "Đăng ký tài khoản khách hàng mới")
-    public ApiResponse<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
+    public ApiResponse<AuthResponse> register(
+            @Valid @RequestBody RegisterRequest request
+    ) {
+
         AuthResponse responseData = authService.register(request);
         return ApiResponse.<AuthResponse>builder()
                 .code(200)
@@ -33,9 +58,30 @@ public class AuthController {
                 .build();
     }
 
+    @Operation(
+            summary = "User Login",
+            description = "Authenticate user credentials and return JWT access token along with user details.",
+            security = {}
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200",
+                    description = SwaggerResponseMessages.SUCCESS
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "400",
+                    description = SwaggerResponseMessages.BAD_REQUEST
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "401",
+                    description = SwaggerResponseMessages.UNAUTHORIZED
+            )
+    })
     @PostMapping("/login")
-    @Operation(summary = "Đăng nhập hệ thống (Lấy JWT Token)")
-    public ApiResponse<AuthResponse> login(@RequestBody AuthRequest request) {
+    public ApiResponse<AuthResponse> login(
+            @RequestBody AuthRequest request
+    ) {
+
         AuthResponse responseData = authService.authenticate(request);
         return ApiResponse.<AuthResponse>builder()
                 .code(200)
@@ -44,9 +90,30 @@ public class AuthController {
                 .build();
     }
 
+    @Operation(
+            summary = "Forgot Password Request",
+            description = "Request password reset link/token to be sent to registered user email.",
+            security = {}
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200",
+                    description = SwaggerResponseMessages.SUCCESS
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "400",
+                    description = SwaggerResponseMessages.BAD_REQUEST
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "404",
+                    description = SwaggerResponseMessages.NOT_FOUND
+            )
+    })
     @PostMapping("/forgot-password")
-    @Operation(summary = "Yêu cầu đặt lại mật khẩu (Gửi Token qua Mail)")
-    public ApiResponse<String> forgotPassword(@RequestBody ForgotPasswordRequest request) {
+    public ApiResponse<String> forgotPassword(
+            @RequestBody ForgotPasswordRequest request
+    ) {
+
         authService.sendForgotPasswordToken(request);
         return ApiResponse.<String>builder()
                 .code(200)
@@ -55,9 +122,26 @@ public class AuthController {
                 .build();
     }
 
+    @Operation(
+            summary = "Reset Password with Token",
+            description = "Validate password reset token and update user account password.",
+            security = {}
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200",
+                    description = SwaggerResponseMessages.SUCCESS
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "400",
+                    description = SwaggerResponseMessages.BAD_REQUEST
+            )
+    })
     @PostMapping("/reset-password")
-    @Operation(summary = "Xác thực token và cập nhật mật khẩu mới")
-    public ApiResponse<String> resetPassword(@RequestBody ResetPasswordRequest request) {
+    public ApiResponse<String> resetPassword(
+            @RequestBody ResetPasswordRequest request
+    ) {
+
         authService.resetPassword(request);
         return ApiResponse.<String>builder()
                 .code(200)

@@ -1,39 +1,39 @@
 package com.example.hotel_booking.user.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import io.swagger.v3.oas.annotations.media.Schema;
 
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-@Schema(description = "Phản hồi xác thực thành công chứa token JWT và thông tin người dùng")
+@Schema(description = "Authentication response containing JWT token and authenticated user profile details")
 public class AuthResponse {
 
-    @Schema(description = "Token JWT xác thực dùng cho Bearer Authentication", example = "eyJhbGciOiJIUzI1NiJ9...")
+    @Schema(description = "JWT Bearer access token for authorization", example = "eyJhbGciOiJIUzI1NiJ9...")
     private String token;
 
-    @Schema(description = "Tên tài khoản người dùng", example = "john_doe")
+    @Schema(description = "Account username", example = "john_doe")
     private String username;
 
-    @Schema(description = "Vai trò (Role) của người dùng trong hệ thống", example = "ROLE_CUSTOMER")
+    @Schema(description = "User role in system", example = "ROLE_USER")
     private String role;
 
-    @Schema(description = "ID của tài khoản User (Dùng cho các tác vụ liên quan đến Account như Đổi mật khẩu, Khóa tài khoản)")
+    @Schema(description = "User account ID", example = "10")
     private Long userId;
 
-    @Schema(description = "ID của hồ sơ cá nhân Customer hoặc Employee (Dùng cho các tác vụ như Đặt phòng, Xem thông tin lương/nhân sự)")
+    @Schema(description = "Associated profile ID (Customer or Employee)", example = "1")
     private Long profileId;
 
-    @Schema(description = "Họ và tên người dùng", example = "John Doe")
+    @Schema(description = "User full name", example = "John Doe")
     private String fullName;
 
-    @Schema(description = "Số điện thoại người dùng", example = "0987654321")
+    @Schema(description = "User contact phone number", example = "0987654321")
     private String phoneNumber;
 
-    @Schema(description = "Email người dùng", example = "nphuthinhvn@gmail.com")
+    @Schema(description = "User email address", example = "johndoe@example.com")
     private String email;
 }

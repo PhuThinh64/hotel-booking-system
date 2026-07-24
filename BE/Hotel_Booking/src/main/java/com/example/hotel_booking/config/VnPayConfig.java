@@ -1,6 +1,5 @@
 package com.example.hotel_booking.config;
 
-// VnPayConfig.java
 public class VnPayConfig {
     public static String vnp_PayUrl = "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html";
     public static String vnp_TmnCode = "AG4E1MQR"; // Mã website lấy từ VNPay
