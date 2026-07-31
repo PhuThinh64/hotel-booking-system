@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -44,25 +45,92 @@ public class AuthServiceImpl implements AuthService { // 1. Implement interface 
     @Value("${app.frontend.url:http://localhost:5173}")
     private String frontendUrl;
 
+    public PhoneCheckResponse checkPhone(String phoneNumber) {
+        Optional<Customer> customerOpt = customerRepository.findByPhoneNumber(phoneNumber);
+
+        if (customerOpt.isPresent()) {
+            Customer customer = customerOpt.get();
+            // Nếu Customer đã được gắn tài khoản User
+            if (customer.getUser() != null) {
+                return PhoneCheckResponse.builder()
+                        .existsInUser(true)
+                        .existsInCustomer(true)
+                        .fullName(customer.getFullName())
+                        .build();
+            }
+            // Khách vãng lai cũ (đã từng đặt phòng nhưng chưa đăng ký tài khoản)
+            return PhoneCheckResponse.builder()
+                    .existsInUser(false)
+                    .existsInCustomer(true)
+                    .fullName(customer.getFullName())
+                    .build();
+        }
+
+        // Khách hàng hoàn toàn mới
+        return PhoneCheckResponse.builder()
+                .existsInUser(false)
+                .existsInCustomer(false)
+                .fullName(null)
+                .build();
+    }
+
     @Override
     @Transactional
     public AuthResponse register(RegisterRequest request) {
-        if (userRepository.existsByUsername(request.getUsername())) {
-            throw new RuntimeException("Username đã tồn tại!");
+        String username = request.getUsername().trim();
+        String phoneNumber = request.getPhoneNumber().trim();
+        String email = request.getEmail().trim();
+        String fullName = request.getFullName().trim();
+
+        // Check 1: Kiểm tra trùng Username (Mã lỗi 8002)
+        if (userRepository.existsByUsername(username)) {
+            throw new AppException(ErrorCode.USER_EXISTED);
         }
 
-        var userRole = roleRepository.findByName("ROLE_USER")
-                .orElseThrow(() -> new RuntimeException("Lỗi: Không tìm thấy Role USER"));
+        // Check 2: Kiểm tra trùng Email trong Customer (Mã lỗi 2007)
+        if (customerRepository.existsByEmail(email)) {
+            throw new AppException(ErrorCode.EMAIL_EXISTED);
+        }
 
+        // Check 3: Kiểm tra SĐT trong bảng Customer
+        Optional<Customer> customerOpt = customerRepository.findByPhoneNumber(phoneNumber);
+        Customer customer;
+
+        if (customerOpt.isPresent()) {
+            customer = customerOpt.get();
+
+            // 3a. Nếu SĐT đã được liên kết với User account (Mã lỗi 2004)
+            if (customer.getUser() != null) {
+                throw new AppException(ErrorCode.PHONE_NUMBER_EXISTED);
+            }
+
+            // 3b. Khách vãng lai: So sánh Họ tên nhập vào với Họ tên đã lưu (Mã lỗi 2008)
+            String existingName = customer.getFullName().trim();
+            if (!existingName.equalsIgnoreCase(fullName)) {
+                throw new AppException(ErrorCode.CUSTOMER_NAME_MISMATCH);
+            }
+
+            // Khớp tên -> Cập nhật Email mới cho Customer vãng lai
+            customer.setEmail(email);
+        } else {
+            // Check 4: Khách hàng mới hoàn toàn -> Tạo Customer entity mới
+            customer = customerMapper.toEntityFromRegister(request);
+        }
+
+        // Lấy Role USER (Mã lỗi 9003)
+        var userRole = roleRepository.findByName("ROLE_USER")
+                .orElseThrow(() -> new AppException(ErrorCode.ROLE_NOT_SUPPORTED));
+
+        // Tạo User mới
         var user = User.builder()
-                .username(request.getUsername())
+                .username(username)
                 .password(passwordEncoder.encode(request.getPassword()))
                 .role(userRole)
                 .active(true)
                 .build();
         var savedUser = userRepository.save(user);
 
-        Customer customer = customerMapper.toEntityFromRegister(request);
+        // Gắn User vào Customer (Tái sử dụng Customer cũ hoặc Customer mới)
         customer.setUser(savedUser);
         Customer savedCustomer = customerRepository.save(customer);
 
@@ -74,6 +142,7 @@ public class AuthServiceImpl implements AuthService { // 1. Implement interface 
                 .profileId(savedCustomer.getId())
                 .fullName(savedCustomer.getFullName())
                 .phoneNumber(savedCustomer.getPhoneNumber())
+                .email(savedCustomer.getEmail())
                 .build();
     }
 

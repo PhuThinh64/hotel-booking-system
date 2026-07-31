@@ -10,10 +10,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -25,6 +22,38 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthServiceImpl authService;
+
+    @Operation(
+            summary = "Check Phone Number Existence",
+            description = "Check if the provided phone number is already registered in User account or exists in Customer records for auto-fill/validation purposes.",
+            security = {}
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "200",
+                    description = SwaggerResponseMessages.SUCCESS
+            ),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                    responseCode = "400",
+                    description = SwaggerResponseMessages.BAD_REQUEST
+            )
+    })
+    @GetMapping("/check-phone")
+    public ApiResponse<PhoneCheckResponse> checkPhone(
+            @io.swagger.v3.oas.annotations.Parameter(
+                    description = "Phone number to check (10 digits starting with 0 or +84)",
+                    example = "0912345678",
+                    required = true
+            )
+            @RequestParam String phoneNumber
+    ) {
+        PhoneCheckResponse responseData = authService.checkPhone(phoneNumber);
+        return ApiResponse.<PhoneCheckResponse>builder()
+                .code(200)
+                .message("Kiểm tra số điện thoại thành công")
+                .result(responseData)
+                .build();
+    }
 
     @Operation(
             summary = "Customer Registration",

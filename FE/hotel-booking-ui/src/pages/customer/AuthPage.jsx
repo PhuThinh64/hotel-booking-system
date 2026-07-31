@@ -8,21 +8,61 @@ const { Title, Text } = Typography;
 
 const AuthPage = () => {
     const [loading, setLoading] = useState(false);
+    const [checkingPhone, setCheckingPhone] = useState(false);
     const [activeTab, setActiveTab] = useState('1');
     const [isForgotPassword, setIsForgotPassword] = useState(false);
     const [isEmailSent, setIsEmailSent] = useState(false);
 
+    // 🚀 Khởi tạo Form Instance để kiểm soát Form Đăng ký
+    const [registerForm] = Form.useForm();
+
     const navigate = useNavigate();
     const location = useLocation();
 
-    
+    // Đồng bộ tab từ màn hình khác chuyển qua thông qua React Router State
     useEffect(() => {
         if (location.state?.tab) setActiveTab(location.state.tab);
     }, [location.state?.tab]);
 
-    
-    
-    
+    // ==========================================
+    // 🚀 XỬ LÝ CHECK SĐT & AUTO-FILL HỌ TÊN
+    // ==========================================
+    const handleCheckPhone = async (e) => {
+        const phone = e.target.value?.trim();
+        const phoneRegex = /^(0|\+84)(\d{9})$/;
+
+        // Chỉ kiểm tra khi SĐT đúng định dạng
+        if (!phone || !phoneRegex.test(phone)) return;
+
+        setCheckingPhone(true);
+        try {
+            const res = await ApiService.checkPhone(phone);
+            
+            // Trường hợp 1: SĐT đã có tài khoản User
+            if (res?.existsInUser) {
+                message.warning('Số điện thoại này đã được đăng ký tài khoản. Vui lòng đăng nhập!');
+                registerForm.setFields([
+                    {
+                        name: 'phoneNumber',
+                        errors: ['Số điện thoại này đã có tài khoản, hãy đăng nhập!']
+                    }
+                ]);
+            } 
+            // Trường hợp 2: Khách vãng lai cũ -> Auto-fill Họ tên
+            else if (res?.existsInCustomer && res?.fullName) {
+                registerForm.setFieldsValue({ fullName: res.fullName });
+                message.info(`Đã tìm thấy thông tin cũ! Đã tự điền họ tên: "${res.fullName}"`);
+            }
+        } catch (error) {
+            console.error('Lỗi khi kiểm tra số điện thoại:', error);
+        } finally {
+            setCheckingPhone(false);
+        }
+    };
+
+    // ==========================================
+    // 1. XỬ LÝ ĐĂNG NHẬP
+    // ==========================================
     const onFinishLogin = async (values) => {
         setLoading(true);
         try {
@@ -50,43 +90,41 @@ const AuthPage = () => {
         }
     };
 
-    
-    
-    
+    // ==========================================
+    // 2. XỬ LÝ ĐĂNG KÝ
+    // ==========================================
     const onFinishRegister = async (values) => {
         setLoading(true);
         try {
-            
             await ApiService.register(values);
             message.success('Đăng ký tài khoản thành công! Mời bạn đăng nhập.');
-            setActiveTab('1'); 
+            registerForm.resetFields();
+            setActiveTab('1'); // Tự động chuyển về tab Đăng Nhập
         } catch (error) {
-            message.error(error.response?.data?.message || 'Đăng ký thất bại! Tên tài khoản hoặc Email có thể đã tồn tại.');
+            // Interceptor ở ApiService đã tự hiển thị message.error từ Backend trả về
+            console.error('Lỗi đăng ký:', error);
         } finally {
             setLoading(false);
         }
     };
 
-    
-    
-    
+    // ==========================================
+    // 3. XỬ LÝ QUÊN MẬT KHẨU
+    // ==========================================
     const onFinishForgotPassword = async (values) => {
         setLoading(true);
         try {
-            
-            
             await ApiService.forgotPassword(values);
             setIsEmailSent(true);
             message.success('Yêu cầu khôi phục mật khẩu thành công!');
         } catch (error) {
-            
             message.error(error.response?.data?.message || 'Tên đăng nhập không tồn tại!');
         } finally {
             setLoading(false);
         }
     };
 
-    
+    // UI NỘI DUNG FORM ĐĂNG NHẬP
     const renderLoginContent = () => (
         <Form onFinish={onFinishLogin} layout="vertical" requiredMark={false} style={{ width: '100%' }}>
             <Form.Item name="username" rules={[{ required: true, message: 'Vui lòng nhập tài khoản hoặc email!' }]} style={{ marginBottom: 18 }}>
@@ -133,25 +171,48 @@ const AuthPage = () => {
         </Form>
     );
 
-    
+    // UI NỘI DUNG FORM ĐĂNG KÝ
     const renderRegisterContent = () => (
-        <Form onFinish={onFinishRegister} layout="vertical" requiredMark={false} style={{ width: '100%' }}>
+        <Form 
+            form={registerForm} // 👈 Gắn registerForm instance
+            onFinish={onFinishRegister} 
+            layout="vertical" 
+            requiredMark={false} 
+            style={{ width: '100%' }}
+        >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                
+                {/* 🚀 Ô Nhập Số Điện Thoại + Bắt sự kiện onBlur */}
+                <Form.Item 
+                    name="phoneNumber" 
+                    rules={[
+                        { required: true, message: 'Số điện thoại không được để trống!' },
+                        { pattern: /^(0|\+84)(\d{9})$/, message: 'Số điện thoại không đúng định dạng!' }
+                    ]} 
+                    style={{ margin: 0 }}
+                >
+                    <Input 
+                        prefix={<PhoneOutlined style={{ color: '#94a3b8' }} />} 
+                        placeholder="Số điện thoại (Nhập xong click ra ngoài để kiểm tra)" 
+                        size="large" 
+                        style={{ borderRadius: 10, height: 44, backgroundColor: '#f8fafc' }} 
+                        onBlur={handleCheckPhone} // 👈 Gọi API kiểm tra khi rời khỏi ô input
+                    />
+                </Form.Item>
+
+                {/* 🚀 Ô Nhập Họ và Tên (Được Auto-fill tự động) */}
                 <Form.Item name="fullName" rules={[{ required: true, message: 'Họ và tên không được để trống!' }]} style={{ margin: 0 }}>
                     <Input prefix={<UserOutlined style={{ color: '#94a3b8' }} />} placeholder="Họ và tên" size="large" style={{ borderRadius: 10, height: 44, backgroundColor: '#f8fafc' }} />
                 </Form.Item>
+
                 <Form.Item name="email" rules={[{ required: true, type: 'email', message: 'Vui lòng nhập đúng định dạng Email!' }]} style={{ margin: 0 }}>
                     <Input prefix={<MailOutlined style={{ color: '#94a3b8' }} />} placeholder="Email liên hệ" size="large" style={{ borderRadius: 10, height: 44, backgroundColor: '#f8fafc' }} />
-                </Form.Item>
-                
-                {/* 🔥 ĐÃ SỬA THÀNH phoneNumber ĐỂ KHỚP VỚI REQUESTRSET BACKEND */}
-                <Form.Item name="phoneNumber" rules={[{ required: true, message: 'Số điện thoại không được để trống!' }]} style={{ margin: 0 }}>
-                    <Input prefix={<PhoneOutlined style={{ color: '#94a3b8' }} />} placeholder="Số điện thoại" size="large" style={{ borderRadius: 10, height: 44, backgroundColor: '#f8fafc' }} />
                 </Form.Item>
                 
                 <Form.Item name="username" rules={[{ required: true, message: 'Tên đăng nhập không được để trống!' }]} style={{ margin: 0 }}>
                     <Input prefix={<UserOutlined style={{ color: '#94a3b8' }} />} placeholder="Tên đăng nhập" size="large" style={{ borderRadius: 10, height: 44, backgroundColor: '#f8fafc' }} />
                 </Form.Item>
+
                 <Form.Item name="password" rules={[{ required: true, message: 'Vui lòng thiết lập mật khẩu bảo mật!' }]} style={{ margin: 0 }}>
                     <Input.Password prefix={<LockOutlined style={{ color: '#94a3b8' }} />} placeholder="Mật khẩu" size="large" style={{ borderRadius: 10, height: 44, backgroundColor: '#f8fafc' }} />
                 </Form.Item>
@@ -161,7 +222,7 @@ const AuthPage = () => {
                     htmlType="submit" 
                     size="large" 
                     block 
-                    loading={loading}
+                    loading={loading || checkingPhone}
                     style={{ borderRadius: 10, height: 46, fontWeight: 600, background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)', border: 'none', marginTop: 6 }}
                 >
                     Đăng Ký Tài Khoản
@@ -170,8 +231,8 @@ const AuthPage = () => {
         </Form>
     );
 
-    
-   const renderForgotPasswordContent = () => {
+    // UI NỘI DUNG PHẦN QUÊN MẬT KHẨU
+    const renderForgotPasswordContent = () => {
         if (isEmailSent) {
             return (
                 <Result
@@ -203,8 +264,6 @@ const AuthPage = () => {
                     </Text>
                 </div>
                 <Form onFinish={onFinishForgotPassword} layout="vertical" requiredMark={false}>
-                    
-                    {/* 🔥 ĐÃ ĐỔI TỪ name="email" THÀNH name="username" */}
                     <Form.Item 
                         name="username" 
                         rules={[{ required: true, message: 'Tên đăng nhập không được để trống!' }]} 
@@ -241,7 +300,7 @@ const AuthPage = () => {
     const items = useMemo(() => [
         { key: '1', label: 'Đăng Nhập', children: <div style={{ paddingTop: 16 }}>{renderLoginContent()}</div> },
         { key: '2', label: 'Đăng Ký', children: <div style={{ paddingTop: 16 }}>{renderRegisterContent()}</div> }
-    ], [loading]);
+    ], [loading, checkingPhone]);
 
     return (
         <div
@@ -261,7 +320,7 @@ const AuthPage = () => {
             >
                 <div style={{ display: 'flex', flexWrap: 'wrap', minHeight: 640 }}>
                     
-                    {/* KHỐI TRÁI: BANNER THÔNG TIN ĐỒNG BỘ */}
+                    {/* KHỐI TRÁI */}
                     <div
                         style={{
                             flex: '1 1 400px',
@@ -302,7 +361,7 @@ const AuthPage = () => {
                         </Space>
                     </div>
 
-                    {/* KHỐI PHẢI: FORM CHỨA TABS & QUÊN MẬT KHẨU CHẠY ĐỘNG */}
+                    {/* KHỐI PHẢI */}
                     <div
                         style={{
                             flex: '1 1 450px',
@@ -313,7 +372,6 @@ const AuthPage = () => {
                             justifyContent: 'center'
                         }}
                     >
-                        {/* ĐIỀU KIỆN RẼ NHÁNH SỬ DỤNG TRẠNG THÁI KHÔI PHỤC TÀI KHOẢN */}
                         {isForgotPassword ? (
                             renderForgotPasswordContent()
                         ) : (

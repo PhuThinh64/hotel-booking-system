@@ -37,4 +37,6 @@ public interface CustomerRepository extends JpaRepository<Customer, Long> {
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate
     );
+
+    boolean existsByEmail(String email);
 }
