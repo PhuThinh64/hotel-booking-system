@@ -112,7 +112,38 @@ public class BookingServiceImpl implements BookingService {
         return response;
     }
 
+    private BookingResponse enrichWithRefundAmount(BookingResponse response, List<Payment> payments) {
+        if (response.getBookingRooms() != null) {
+            response.setBookingRooms(
+                    response.getBookingRooms()
+                            .stream()
+                            .toList()
+            );
+        }
+
+        BigDecimal refundAmount = payments.stream()
+                .filter(p -> p.getPaymentType() == PaymentType.REFUND)
+                .filter(p -> p.getStatus() == PaymentStatus.SUCCESS)
+                .map(Payment::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        response.setRefundAmount(refundAmount);
+
+        payments.stream()
+                .filter(p -> p.getPaymentType() == PaymentType.DEPOSIT || p.getPaymentType() == PaymentType.FINAL_PAYMENT)
+                .findFirst()
+                .ifPresent(p -> response.setPaymentMethod(p.getMethod().name()));
+
+        payments.stream()
+                .filter(p -> p.getPaymentType() == PaymentType.REFUND && p.getStatus() == PaymentStatus.SUCCESS)
+                .findFirst()
+                .ifPresent(p -> response.setRefundMethod(p.getMethod().name()));
+
+        return response;
+    }
+
     @Override
+    @Transactional(readOnly = true)
     public List<BookingResponse> getMyHistory() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         String username = authentication.getName();
@@ -120,25 +151,44 @@ public class BookingServiceImpl implements BookingService {
         User user = userRepo.findByUsername(username)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-        
         Optional<Customer> customerOpt = customerRepo.findByUserId(user.getId());
 
-        
-        
         if (customerOpt.isEmpty()) {
             return Collections.emptyList();
         }
 
         Customer customer = customerOpt.get();
 
+        // 1. Lấy danh sách Bookings
         List<Booking> bookings = bookingRepo.findByCustomerIdWithRooms(customer.getId());
+        if (bookings.isEmpty()) {
+            return Collections.emptyList();
+        }
 
-
-
-        return bookings.stream()
+        // 2. Map sang DTO trước
+        List<BookingResponse> responses = bookings.stream()
                 .map(bookingMapper::toBookingResponse)
-                .map(this::enrichWithRefundAmount)
                 .toList();
+
+        // 3. Gom danh sách ID
+        List<Long> bookingIds = responses.stream()
+                .map(BookingResponse::getId)
+                .toList();
+
+        // 4. Query đúng 1 CÂU SQL cho toàn bộ Payment của các đơn này
+        List<Payment> allPayments = paymentRepo.findByBookingIdIn(bookingIds);
+
+        // 5. Gom nhóm Payment theo bookingId trên RAM
+        Map<Long, List<Payment>> paymentMap = allPayments.stream()
+                .collect(Collectors.groupingBy(p -> p.getBooking().getId()));
+
+        // 6. Enrich bằng hàm 2 tham số (KHÔNG BẮN THÊM SQL)
+        responses.forEach(response -> {
+            List<Payment> payments = paymentMap.getOrDefault(response.getId(), Collections.emptyList());
+            enrichWithRefundAmount(response, payments);
+        });
+
+        return responses;
     }
 
     @Override
@@ -352,20 +402,44 @@ public class BookingServiceImpl implements BookingService {
     }
 
 
+    @Override
     public Page<BookingResponse> getAllBookings(String code, BookingStatus status, LocalDateTime start, LocalDateTime end, Pageable pageable) {
 
-        
         Specification<Booking> spec = Specification.where(BookingSpecifications.hasBookingCode(code))
                 .and(BookingSpecifications.hasStatus(status))
                 .and(BookingSpecifications.hasDateRange(start, end));
 
-        
-        return bookingRepo.findAll(spec, pageable)
-                .map(bookingMapper::toBookingResponse)
-                .map(this::enrichWithRefundAmount);
+        // 1. Phân trang Booking
+        Page<Booking> bookingPage = bookingRepo.findAll(spec, pageable);
+
+        // 2. Chuyển sang DTO Page
+        Page<BookingResponse> responsePage = bookingPage.map(bookingMapper::toBookingResponse);
+
+        // 3. Gom ID của các booking trong trang hiện tại
+        List<Long> bookingIds = responsePage.getContent().stream()
+                .map(BookingResponse::getId)
+                .toList();
+
+        if (bookingIds.isEmpty()) {
+            return responsePage;
+        }
+
+        // 4. Query 1 LẦN DUY NHẤT tất cả payments của danh sách bookingIds
+        List<Payment> allPayments = paymentRepo.findByBookingIdIn(bookingIds);
+
+        // 5. Gom nhóm Payment theo bookingId bằng Map
+        Map<Long, List<Payment>> paymentMap = allPayments.stream()
+                .collect(Collectors.groupingBy(p -> p.getBooking().getId()));
+
+        // 6. Gọi hàm enrichWithRefundAmount
+        responsePage.getContent().forEach(response -> {
+            List<Payment> paymentsOfBooking = paymentMap.getOrDefault(response.getId(), Collections.emptyList());
+            enrichWithRefundAmount(response, paymentsOfBooking);
+        });
+
+        return responsePage;
     }
 
-    
     @Override
     public BookingResponse getBookingById(Long id) {
 
@@ -381,8 +455,8 @@ public class BookingServiceImpl implements BookingService {
     private void releaseRooms(Booking booking) {
         if (booking.getBookingRooms() != null) {
             booking.getBookingRooms().forEach(br -> {
-                
-                
+
+
                 if (br.getStatus() != BookingRoomStatus.CANCELLED && br.getRoom() != null) {
                     br.getRoom().setStatus(RoomStatus.AVAILABLE);
                     roomRepo.save(br.getRoom());
@@ -429,11 +503,11 @@ public class BookingServiceImpl implements BookingService {
     @Transactional
     public BookingResponse processVnPayCallback(Map<String, String> vnpParams) {
         String responseCode = vnpParams.get("vnp_ResponseCode");
-        String txnRef = vnpParams.get("vnp_TxnRef");         
-        String transactionNo = vnpParams.get("vnp_TransactionNo"); 
-        String orderInfo = vnpParams.get("vnp_OrderInfo");     
+        String txnRef = vnpParams.get("vnp_TxnRef");
+        String transactionNo = vnpParams.get("vnp_TransactionNo");
+        String orderInfo = vnpParams.get("vnp_OrderInfo");
 
-        
+
         if (orderInfo != null && orderInfo.startsWith("Thanh_toan_coc_don_")) {
             try {
                 Long bookingId = Long.parseLong(orderInfo.replace("Thanh_toan_coc_don_", ""));
@@ -445,15 +519,15 @@ public class BookingServiceImpl implements BookingService {
             }
         }
 
-        
+
         Optional<Payment> paymentOpt = paymentRepository.findByTransactionId(transactionNo);
 
-        
+
         if (paymentOpt.isEmpty()) {
             paymentOpt = paymentRepository.findByTransactionId(txnRef);
         }
 
-        
+
         if (paymentOpt.isPresent()) {
             Payment payment = paymentOpt.get();
 
@@ -466,7 +540,7 @@ public class BookingServiceImpl implements BookingService {
             return bookingMapper.toBookingResponse(payment.getBooking());
         }
 
-        
+
         throw new AppException(ErrorCode.PAYMENT_NOT_FOUND);
     }
 
@@ -474,11 +548,11 @@ public class BookingServiceImpl implements BookingService {
     @Transactional
     @LogAction(module = "BOOKING", action = "CHECK_IN", targetId = "#bookingId", entityClass = Booking.class)
     public BookingResponse checkIn(Long bookingId) {
-        
+
         Booking booking = bookingRepo.findById(bookingId)
                 .orElseThrow(() -> new AppException(ErrorCode.BOOKING_NOT_FOUND));
 
-        
+
         if (booking.getStatus() != BookingStatus.CONFIRMED) {
             throw new AppException(ErrorCode.INVALID_BOOKING_STATUS);
         }
@@ -487,12 +561,12 @@ public class BookingServiceImpl implements BookingService {
             throw new AppException(ErrorCode.ROOM_NOT_ASSIGNED);
         }
 
-        
+
         booking.setStatus(BookingStatus.CHECKED_IN);
         booking.setActualCheckIn(LocalDateTime.now());
         bookingRepo.save(booking);
 
-        
+
         if (booking.getBookingRooms() != null) {
             booking.getBookingRooms().forEach(bookingRoom -> {
                 Room room = bookingRoom.getRoom();
@@ -503,7 +577,7 @@ public class BookingServiceImpl implements BookingService {
             });
         }
 
-        
+
 
         return bookingMapper.toBookingResponse(booking);
     }
@@ -516,34 +590,34 @@ public class BookingServiceImpl implements BookingService {
         Payment vnpayPayment = getVnpayPayment(bookingId);
         boolean originalVnpay = vnpayPayment != null;
 
-        
+
         BigDecimal roomAmount = booking.getRoomAmount() != null ? booking.getRoomAmount() : BigDecimal.ZERO;
         BigDecimal serviceAmount = booking.getServiceAmount() != null ? booking.getServiceAmount() : BigDecimal.ZERO;
-        BigDecimal surchargeAmount = calculateLateCheckoutSurcharge(booking); 
+        BigDecimal surchargeAmount = calculateLateCheckoutSurcharge(booking);
         BigDecimal depositAmount = booking.getDepositAmount() != null ? booking.getDepositAmount() : BigDecimal.ZERO;
 
         BigDecimal totalAmount = roomAmount.add(serviceAmount).add(surchargeAmount);
 
-        
+
         BigDecimal diff = totalAmount.subtract(depositAmount);
 
         BigDecimal remainingAmount = BigDecimal.ZERO;
         BigDecimal refundAmount = BigDecimal.ZERO;
 
         if (diff.compareTo(BigDecimal.ZERO) > 0) {
-            remainingAmount = diff; 
+            remainingAmount = diff;
         } else if (diff.compareTo(BigDecimal.ZERO) < 0) {
-            refundAmount = diff.abs(); 
+            refundAmount = diff.abs();
         }
 
-        
+
         return CheckoutPreviewResponse.builder()
                 .bookingId(booking.getId())
                 .roomAmount(roomAmount)
                 .serviceAmount(serviceAmount)
                 .depositAmount(depositAmount)
                 .surchargeAmount(surchargeAmount)
-                .totalAmount(totalAmount) 
+                .totalAmount(totalAmount)
                 .remainingAmount(remainingAmount != null ? remainingAmount : BigDecimal.ZERO)
                 .refundAmount(refundAmount != null ? refundAmount : BigDecimal.ZERO)
                 .originalVnpay(originalVnpay)
@@ -561,9 +635,9 @@ public class BookingServiceImpl implements BookingService {
             throw new AppException(ErrorCode.CHECKIN_REQUIRED);
         }
 
-        
-        
-        
+
+
+
         BigDecimal surcharge = calculateLateCheckoutSurcharge(booking);
 
         BigDecimal roomAmount =
@@ -594,9 +668,9 @@ public class BookingServiceImpl implements BookingService {
         CheckoutResponse response = bookingMapper.toCheckoutResponse(booking);
         response.setSurchargeAmount(surcharge);
 
-        
-        
-        
+
+
+
         if (remainingAmount.compareTo(BigDecimal.ZERO) > 0) {
 
             response.setRemainingAmount(remainingAmount);
@@ -647,9 +721,9 @@ public class BookingServiceImpl implements BookingService {
             }
         }
 
-        
-        
-        
+
+
+
         else if (remainingAmount.compareTo(BigDecimal.ZERO) < 0) {
 
             BigDecimal refundAmount = remainingAmount.abs();
@@ -715,9 +789,9 @@ public class BookingServiceImpl implements BookingService {
             }
         }
 
-        
-        
-        
+
+
+
         else {
 
             response.setRemainingAmount(BigDecimal.ZERO);
@@ -732,7 +806,7 @@ public class BookingServiceImpl implements BookingService {
 
     }
 
-    
+
     private void closeBookingAndCleanRooms(Booking booking) {
         booking.setStatus(BookingStatus.CHECKED_OUT);
         cleanRooms(booking);
@@ -758,17 +832,17 @@ public class BookingServiceImpl implements BookingService {
             return;
         }
 
-        
+
         Payment payment = paymentRepo.findByBookingId(bookingId)
                 .stream()
                 .filter(p -> p.getStatus() == PaymentStatus.PENDING)
                 .filter(p -> p.getPaymentType() == PaymentType.FINAL_PAYMENT)
                 .filter(p -> p.getMethod() == PaymentMethod.VNPAY)
-                .reduce((first, second) -> second) 
+                .reduce((first, second) -> second)
                 .orElse(null);
 
         if (payment != null) {
-            
+
             BigDecimal finalAmount = new BigDecimal(amount)
                     .divide(new BigDecimal(100));
 
@@ -780,7 +854,7 @@ public class BookingServiceImpl implements BookingService {
             paymentRepo.save(payment);
         }
 
-        
+
         booking.setStatus(BookingStatus.CHECKED_OUT);
 
         if (booking.getBookingRooms() != null) {
@@ -814,7 +888,7 @@ public class BookingServiceImpl implements BookingService {
                 java.time.temporal.ChronoUnit.MINUTES
                         .between(plannedDeparture, now);
 
-        
+
         if (lateMinutes <= 30) {
             return BigDecimal.ZERO;
         }
@@ -824,17 +898,17 @@ public class BookingServiceImpl implements BookingService {
                         ? booking.getRoomAmount()
                         : BigDecimal.ZERO;
 
-        
+
         if (lateMinutes <= 180) {
             return roomPrice.multiply(new BigDecimal("0.3"));
         }
 
-        
+
         if (lateMinutes <= 360) {
             return roomPrice.multiply(new BigDecimal("0.5"));
         }
 
-        
+
         return roomPrice;
     }
 
@@ -846,11 +920,11 @@ public class BookingServiceImpl implements BookingService {
         long daysBetween = java.time.temporal.ChronoUnit.DAYS.between(today, arrivalDate);
 
         if (daysBetween >= 7) {
-            return amount; 
+            return amount;
         } else if (daysBetween >= 3) {
-            return amount.multiply(new BigDecimal("0.5")); 
+            return amount.multiply(new BigDecimal("0.5"));
         } else {
-            return BigDecimal.ZERO; 
+            return BigDecimal.ZERO;
         }
     }
 
@@ -858,7 +932,7 @@ public class BookingServiceImpl implements BookingService {
         return paymentRepo.findByBookingId(bookingId)
                 .stream()
                 .filter(p -> p.getPaymentType() == PaymentType.REFUND)
-                
+
                 .filter(p -> p.getStatus() == PaymentStatus.SUCCESS || p.getStatus() == PaymentStatus.PENDING)
                 .map(p -> p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -866,13 +940,13 @@ public class BookingServiceImpl implements BookingService {
 
     private long getNights(Booking booking) {
         if (booking.getArrivalDate() == null || booking.getDepartureDate() == null) {
-            return 1; 
+            return 1;
         }
         long nights = java.time.temporal.ChronoUnit.DAYS.between(
                 booking.getArrivalDate().toLocalDate(),
                 booking.getDepartureDate().toLocalDate()
         );
-        
+
         return (nights < 1) ? 1 : nights;
     }
 
@@ -905,7 +979,7 @@ public class BookingServiceImpl implements BookingService {
 
     }
 
-    
+
     private String executeVnPayRefund(
             Booking booking,
             Payment payment,
@@ -923,7 +997,7 @@ public class BookingServiceImpl implements BookingService {
 
         Map<String, Object> result = vnPayService.refund(
                 type,
-                payment.getTransactionId(), 
+                payment.getTransactionId(),
                 amount,
                 payment.getTransactionId(),
                 payment.getPaidAt(),
@@ -944,7 +1018,7 @@ public class BookingServiceImpl implements BookingService {
         return (String) result.get("vnp_TransactionNo");
     }
 
-    
+
     private void saveRefundPayment(Booking booking, BigDecimal amount, PaymentMethod method, PaymentStatus status, String transactionId) {
         paymentRepo.save(Payment.builder()
                 .booking(booking)
@@ -957,39 +1031,39 @@ public class BookingServiceImpl implements BookingService {
                 .build());
     }
 
-    
+
     private PaymentStatus performVnPayRefund(Booking booking, Payment payment, BigDecimal amount, String note) {
         String txId;
         PaymentStatus status;
 
-        
+
         try {
             if (isVnPaySimulation) {
                 txId = "MOCK_VNP_REFUND_" + System.currentTimeMillis();
                 status = PaymentStatus.SUCCESS;
             } else {
-                
+
                 txId = executeVnPayRefund(booking, payment, amount, "03", note);
                 status = PaymentStatus.SUCCESS;
             }
         } catch (Exception e) {
-            
+
             txId = "ERR_VNPAY_" + System.currentTimeMillis();
             status = PaymentStatus.PENDING;
-            
+
             log.error("Lỗi hoàn tiền VNPay: BookingId={}, Error={}", booking.getId(), e.getMessage());
         }
 
-        
+
         saveRefundPayment(booking, amount, PaymentMethod.VNPAY, status, txId);
 
-        
+
         return status;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public BookingCancelResponse cancelSingleRoom(Long bookingId, Long bookingRoomId, String refundMethod, String reason) { 
+    public BookingCancelResponse cancelSingleRoom(Long bookingId, Long bookingRoomId, String refundMethod, String reason) {
 
         Booking booking = bookingRepo.findById(bookingId)
                 .orElseThrow(() -> new AppException(ErrorCode.BOOKING_NOT_FOUND));
@@ -1045,13 +1119,13 @@ public class BookingServiceImpl implements BookingService {
             booking.setCancelReason("Hủy đơn do hủy phòng" + (booking.getBookingRooms().stream().filter(br -> br.getStatus() == BookingRoomStatus.CANCELLED).count() > 1 ? " lần lượt" : " duy nhất"));
             booking.setStatus(refundStatus == PaymentStatus.SUCCESS ? BookingStatus.CANCELLED : BookingStatus.PENDING_REFUND);
 
-            
+
             if (booking.getBookingServices() != null) {
                 booking.getBookingServices().forEach(bs -> {
-                    bs.setStatus(BookingServiceStatus.CANCELLED); 
+                    bs.setStatus(BookingServiceStatus.CANCELLED);
                 });
             }
-            booking.setServiceAmount(BigDecimal.ZERO); 
+            booking.setServiceAmount(BigDecimal.ZERO);
         }
         bookingRepo.save(booking);
 
@@ -1071,7 +1145,7 @@ public class BookingServiceImpl implements BookingService {
         Booking booking = bookingRepo.findById(bookingId)
                 .orElseThrow(() -> new AppException(ErrorCode.BOOKING_NOT_FOUND));
 
-        
+
         if (booking.getStatus() == BookingStatus.CANCELLED || booking.getStatus() == BookingStatus.PENDING_REFUND) {
             throw new AppException(ErrorCode.INVALID_BOOKING_STATUS, "Đơn hàng này đã được hủy hoặc đang chờ hoàn tiền trước đó.");
         }
@@ -1111,7 +1185,7 @@ public class BookingServiceImpl implements BookingService {
 
         if (booking.getBookingServices() != null) {
             booking.getBookingServices().forEach(bs -> {
-                bs.setStatus(BookingServiceStatus.CANCELLED); 
+                bs.setStatus(BookingServiceStatus.CANCELLED);
             });
         }
 
@@ -1124,8 +1198,8 @@ public class BookingServiceImpl implements BookingService {
     @Override
     @Transactional
     public void approveManualRefund(Long bookingId, PaymentMethod refundMethod) {
-        
-        
+
+
         if (refundMethod == PaymentMethod.BANK_TRANSFER || refundMethod == PaymentMethod.BANK_TRANSFER) {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
@@ -1133,13 +1207,13 @@ public class BookingServiceImpl implements BookingService {
                     .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
 
             if (!isAdmin) {
-                
+
                 throw new AppException(ErrorCode.ADMIN_REQUIRED,
                         "Hành động không được phép: Chỉ có quản trị viên (ADMIN) mới được duyệt hoàn tiền qua chuyển khoản ngân hàng.");
             }
         }
 
-        
+
         Booking booking = bookingRepo.findById(bookingId)
                 .orElseThrow(() -> new AppException(ErrorCode.BOOKING_NOT_FOUND));
 
@@ -1153,7 +1227,7 @@ public class BookingServiceImpl implements BookingService {
             throw new AppException(ErrorCode.PAYMENT_NOT_FOUND, "Không tìm thấy khoản hoàn tiền đang chờ.");
         }
 
-        
+
         BigDecimal totalRefundApproved = pendingRefunds.stream()
                 .map(Payment::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -1163,7 +1237,7 @@ public class BookingServiceImpl implements BookingService {
             p.setStatus(PaymentStatus.SUCCESS);
             p.setPaidAt(LocalDateTime.now());
 
-            
+
             if (p.getTransactionId() == null || p.getTransactionId().trim().isEmpty()) {
                 p.setTransactionId("RFND-MANUAL-" + System.currentTimeMillis());
             }
@@ -1171,17 +1245,17 @@ public class BookingServiceImpl implements BookingService {
             paymentRepo.save(p);
         });
 
-        
+
         if (booking.getActualCheckIn() != null) {
-            
+
             booking.setStatus(BookingStatus.CHECKED_OUT);
         } else {
-            
+
             booking.setStatus(BookingStatus.CANCELLED);
         }
         bookingRepo.save(booking);
 
-        
+
         String logDesc = String.format("Xác nhận hoàn tiền thủ công cho đơn đặt phòng #%d. Tổng tiền hoàn trả khách: %,.0f VND bằng hình thức [%s].",
                 bookingId, totalRefundApproved, refundMethod.name());
 

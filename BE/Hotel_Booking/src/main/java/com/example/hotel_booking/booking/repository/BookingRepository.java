@@ -2,8 +2,6 @@ package com.example.hotel_booking.booking.repository;
 
 import com.example.hotel_booking.booking.entity.Booking;
 import com.example.hotel_booking.common.BookingStatus;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -20,8 +18,7 @@ import java.util.Optional;
 public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpecificationExecutor<Booking> {
     List<Booking> findByStatusAndExpiryDateBefore(BookingStatus status, LocalDateTime now);
 
-    @EntityGraph(attributePaths = {"customer", "bookingRooms", "bookingRooms.room"})
-    Page<Booking> findAll(Pageable pageable);
+
 
     @Query("SELECT b FROM Booking b WHERE b.contactPhone = :phone AND b.bookingCode = :bookingCode")
     Optional<Booking> findByPhoneAndBookingCode(@Param("phone") String phone, @Param("bookingCode") String bookingCode);
@@ -29,7 +26,9 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
     @EntityGraph(attributePaths = {
             "bookingRooms",
             "bookingRooms.room",
-            "bookingRooms.roomType"
+            "bookingRooms.roomType",
+            "bookingServices",
+            "bookingServices.extraService"
     })
     @Query("SELECT b FROM Booking b WHERE b.customer.id = :customerId ORDER BY b.createdAt DESC")
     List<Booking> findByCustomerIdWithRooms(@Param("customerId") Long customerId);
@@ -45,11 +44,11 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
 
     @Query("SELECT COUNT(b) FROM Booking b WHERE b.departureDate >= :start AND b.departureDate <= :end AND b.status = 'CHECKED_IN'")
     long countTodayCheckOuts(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
-    
+
     @Query("SELECT SUM(b.totalAmount) FROM Booking b WHERE b.arrivalDate >= :start AND b.arrivalDate <= :end AND b.status IN :statuses")
     BigDecimal calculateTotalRevenueByDateRange(@Param("statuses") List<BookingStatus> statuses, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
-    
+
     @Query("SELECT COUNT(b) FROM Booking b WHERE b.arrivalDate >= :start AND b.arrivalDate <= :end AND b.status IN :statuses")
     long countSuccessfulBookingsByDateRange(@Param("statuses") List<BookingStatus> statuses, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
@@ -78,7 +77,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
             @Param("endDate") LocalDateTime endDate
     );
 
-    
+
     @Query("SELECT YEAR(b.arrivalDate), MONTH(b.arrivalDate), SUM(b.totalAmount) " +
             "FROM Booking b " +
             "WHERE b.arrivalDate >= :start AND b.arrivalDate <= :end " +
@@ -89,7 +88,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
                                                 @Param("start") LocalDateTime start,
                                                 @Param("end") LocalDateTime end);
 
-    
+
     @Query("SELECT COUNT(DISTINCT br.room.id) FROM BookingRoom br " +
             "WHERE br.booking.arrivalDate <= :end AND br.booking.departureDate >= :start " +
             "AND br.booking.status IN ('CHECKED_IN', 'CHECKED_OUT')")

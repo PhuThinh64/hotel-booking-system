@@ -1,6 +1,5 @@
 package com.example.hotel_booking.payment.repository;
 
-import com.example.hotel_booking.common.PaymentStatus;
 import com.example.hotel_booking.common.PaymentType;
 import com.example.hotel_booking.payment.entity.Payment;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -19,23 +18,14 @@ public interface PaymentRepository extends JpaRepository<Payment, Long>, JpaSpec
     boolean existsByTransactionId(String transactionId);
     List<Payment> findByBookingId(Long bookingId);
 
-    boolean existsByBookingIdAndPaymentTypeAndStatus(Long bookingId, PaymentType paymentType, PaymentStatus status);
+    List<Payment> findByBookingIdIn(List<Long> bookingIds);
 
-    
-    List<Payment> findByStatusAndPaidAtBetween(
-            PaymentStatus status,
-            LocalDateTime start,
-            LocalDateTime end
-    );
 
-    
+    // Truy vấn tính tổng doanh thu thành công trong một khoảng thời gian
     @Query("SELECT SUM(p.amount) FROM Payment p WHERE p.paymentType IN :types AND p.status = 'SUCCESS' AND p.paidAt BETWEEN :start AND :end")
     BigDecimal sumRevenueByTypes(@Param("start") LocalDateTime start,
                                  @Param("end") LocalDateTime end,
                                  @Param("types") List<PaymentType> types);
 
-    List<Payment> findByPaymentTypeAndStatus(PaymentType type, PaymentStatus status);
-
-    List<Payment> findByPaymentType(PaymentType paymentType);
 
 }

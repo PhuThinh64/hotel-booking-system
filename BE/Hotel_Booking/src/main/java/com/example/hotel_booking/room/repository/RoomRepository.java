@@ -11,7 +11,6 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
-import java.time.LocalDateTime;
 
 @Repository
 public interface RoomRepository extends JpaRepository<Room, Long> {
@@ -28,26 +27,8 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
 
     long countByStatus(com.example.hotel_booking.common.RoomStatus status);
 
-    @Query("""
-        SELECT r FROM Room r
-        WHERE r.roomType.id = :roomTypeId
-        AND r.active = true
-        AND r.id NOT IN (
-            SELECT br.room.id FROM BookingRoom br
-            JOIN br.booking b
-            WHERE b.status IN ('PENDING_DEPOSIT', 'CONFIRMED', 'CHECKED_IN')
-            AND b.arrivalDate < :checkOut
-            AND b.departureDate > :checkIn
-        )
-    """)
-    List<Room> findAvailableRooms(
-            @Param("roomTypeId") Long roomTypeId,
-            @Param("checkIn") LocalDateTime checkIn,
-            @Param("checkOut") LocalDateTime checkOut
-    );
-
-    @Query("SELECT r FROM Room r JOIN FETCH r.roomType")
-    List<Room> findAllWithRoomType();
+    @Query("SELECT r FROM Room r JOIN FETCH r.roomType WHERE r.active = true")
+    List<Room> findAllActiveWithRoomType();
 
     long countByActiveTrue();
 
