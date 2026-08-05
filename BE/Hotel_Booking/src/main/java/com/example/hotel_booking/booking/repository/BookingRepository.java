@@ -23,14 +23,18 @@ public interface BookingRepository extends JpaRepository<Booking, Long>, JpaSpec
     @Query("SELECT b FROM Booking b WHERE b.contactPhone = :phone AND b.bookingCode = :bookingCode")
     Optional<Booking> findByPhoneAndBookingCode(@Param("phone") String phone, @Param("bookingCode") String bookingCode);
 
+
     @EntityGraph(attributePaths = {
             "bookingRooms",
             "bookingRooms.room",
-            "bookingRooms.roomType",
-            "bookingServices",
-            "bookingServices.extraService"
+            "bookingRooms.roomType"
     })
-    @Query("SELECT b FROM Booking b WHERE b.customer.id = :customerId ORDER BY b.createdAt DESC")
+    @Query("""
+        SELECT b
+        FROM Booking b
+        WHERE b.customer.id = :customerId
+        ORDER BY b.createdAt DESC
+        """)
     List<Booking> findByCustomerIdWithRooms(@Param("customerId") Long customerId);
 
     @Query("SELECT b FROM Booking b WHERE b.arrivalDate >= :start AND b.arrivalDate <= :end AND b.status = 'CONFIRMED'")

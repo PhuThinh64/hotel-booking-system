@@ -3,12 +3,10 @@ package com.example.hotel_booking.bookingroom.mapper;
 import com.example.hotel_booking.booking.entity.Booking;
 import com.example.hotel_booking.bookingroom.dto.BookingRoomCreateRequest;
 import com.example.hotel_booking.bookingroom.dto.BookingRoomResponse;
-import com.example.hotel_booking.bookingroom.dto.BookingRoomUpdateRequest;
 import com.example.hotel_booking.bookingroom.entity.BookingRoom;
 import com.example.hotel_booking.room.entity.Room;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
-import org.mapstruct.MappingTarget;
 
 @Mapper(componentModel = "spring", imports = {java.math.BigDecimal.class})
 public interface BookingRoomMapper {
@@ -29,9 +27,4 @@ public interface BookingRoomMapper {
     @Mapping(target = "status", ignore = true)
     BookingRoom toEntity(BookingRoomCreateRequest request, Booking booking, Room room);
 
-    @Mapping(target = "id", ignore = true)
-    @Mapping(target = "booking", ignore = true)
-    @Mapping(target = "room", ignore = true)
-    @Mapping(target = "priceAtOrder", ignore = true)
-    void updateEntityFromRequest(BookingRoomUpdateRequest request, @MappingTarget BookingRoom entity);
 }

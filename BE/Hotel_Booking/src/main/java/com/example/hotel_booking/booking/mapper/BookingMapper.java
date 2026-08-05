@@ -21,7 +21,7 @@ public interface BookingMapper {
 
 
     @Mapping(target = "id", ignore = true)
-    @Mapping(target = "customer", source = "customer") 
+    @Mapping(target = "customer", source = "customer")
     @Mapping(target = "arrivalDate", source = "request.checkIn")
     @Mapping(target = "departureDate", source = "request.checkOut")
     @Mapping(target = "contactName", source = "request.contactName")
@@ -30,7 +30,7 @@ public interface BookingMapper {
     @Mapping(target = "serviceAmount", source = "serviceAmount")
     @Mapping(target = "totalAmount", source = "totalAmount")
     @Mapping(target = "depositAmount", source = "deposit")
-    @Mapping(target = "expiryDate", expression = "java(java.time.LocalDateTime.now().plusMinutes(15))") 
+    @Mapping(target = "expiryDate", expression = "java(java.time.LocalDateTime.now().plusMinutes(15))") // Nên để 15p cho khách kịp cọc
     @Mapping(target = "status", constant = "PENDING_DEPOSIT")
     @Mapping(target = "bookingRooms", ignore = true)
     @Mapping(target = "bookingServices", ignore = true)
@@ -44,8 +44,9 @@ public interface BookingMapper {
 
     @Mapping(source = "room.id", target = "roomId")
     @Mapping(source = "room.roomNumber", target = "roomNumber")
-    @Mapping(source = "bookingRoom.roomType.name", target = "roomType")
-    @Mapping(source = "id",target="bookingRoomId")
+    @Mapping(source = "roomType.name", target = "roomType")
+    @Mapping(source = "roomType.id", target = "roomTypeId")
+    @Mapping(source = "id", target = "bookingRoomId")
     BookingRoomResponse toBookingRoomResponse(BookingRoom bookingRoom);
 
     @Mapping(source = "booking.id", target = "bookingId")
@@ -59,12 +60,20 @@ public interface BookingMapper {
     @Mapping(target = "remainingAmount", ignore = true)
     BookingResponse toBookingResponse(Booking booking);
 
+    @Mapping(source = "customer.id", target = "customerId")
+    @Mapping(source = "customer.fullName", target = "customerName")
+    @Mapping(source = "customer.phoneNumber", target = "customerPhone")
+    @Mapping(target = "remainingAmount", ignore = true)
+    @Mapping(target = "bookingRooms", ignore = true)
+    @Mapping(target = "bookingServices", ignore = true)
+    BookingResponse toBookingHistoryResponse(Booking booking);
 
-    
+
+    // Mapper cho bảng con - Nhận vào Request, Room và Booking để map 1 lần
     @Mapping(target = "id", ignore = true)
     @Mapping(source = "booking", target = "booking")
     @Mapping(source = "roomType", target = "roomType")
-    @Mapping(target = "room", ignore = true) 
+    @Mapping(target = "room", ignore = true) // chưa assign phòng
     @Mapping(source = "roomType.price", target = "priceAtOrder")
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
@@ -75,7 +84,6 @@ public interface BookingMapper {
     @Mapping(source = "customer.fullName", target = "customerName")
     @Mapping(source = "arrivalDate", target = "checkInDate")
     @Mapping(source = "departureDate", target = "checkOutDate")
-    
     CheckoutResponse toCheckoutResponse(Booking booking);
 
 

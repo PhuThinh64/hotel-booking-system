@@ -16,5 +16,8 @@ public interface BookingServiceDetailRepository extends JpaRepository<BookingSer
 
     Optional<BookingServiceDetail> findByBookingIdAndExtraServiceIdAndStatus(Long bookingId, Long serviceId, BookingServiceStatus status);
 
-
+    @EntityGraph(attributePaths = {
+            "extraService"
+    })
+    List<BookingServiceDetail> findByBookingIdIn(List<Long> bookingIds);
 }

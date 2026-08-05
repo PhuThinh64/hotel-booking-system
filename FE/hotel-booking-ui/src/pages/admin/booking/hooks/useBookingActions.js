@@ -251,15 +251,14 @@ const useBookingActions = (deps) => {
   const handleOpenAssignRoom = useCallback(async (bookingRoomRecord) => {
     try {
       setLoading(true);
-      const res = await ApiService.getRooms({ 
-        page: 0, 
-        size: 100, 
-        roomNumber: '', 
-        status: 'AVAILABLE' 
+        const res = await ApiService.getRooms({
+            page: 0,
+            size: 100,
+            roomTypeId: bookingRoomRecord.roomTypeId
       });
       const roomsData = res.result?.content ?? res.content ?? [];
-      const filtered = roomsData.filter((r) => r.roomType === bookingRoomRecord.roomType);
-      setAvailableRoomsForAssign(filtered);
+
+      setAvailableRoomsForAssign(roomsData);
       setSelectedBookingRoomIdToAssign(bookingRoomRecord.bookingRoomId);
       setIsAssignRoomModalOpen(true);
     } catch {

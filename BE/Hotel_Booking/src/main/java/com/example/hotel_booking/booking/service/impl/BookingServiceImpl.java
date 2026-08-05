@@ -159,32 +159,69 @@ public class BookingServiceImpl implements BookingService {
 
         Customer customer = customerOpt.get();
 
-        // 1. Lấy danh sách Bookings
+        // 1. Lấy Booking + BookingRoom
         List<Booking> bookings = bookingRepo.findByCustomerIdWithRooms(customer.getId());
         if (bookings.isEmpty()) {
             return Collections.emptyList();
         }
 
-        // 2. Map sang DTO trước
-        List<BookingResponse> responses = bookings.stream()
-                .map(bookingMapper::toBookingResponse)
+        List<Long> bookingIds = bookings.stream()
+                .map(Booking::getId)
                 .toList();
 
-        // 3. Gom danh sách ID
-        List<Long> bookingIds = responses.stream()
-                .map(BookingResponse::getId)
-                .toList();
+        // 2. Lấy Service riêng
+        List<BookingServiceDetail> allServices =
+                bookingServiceDetailRepo.findByBookingIdIn(bookingIds);
 
-        // 4. Query đúng 1 CÂU SQL cho toàn bộ Payment của các đơn này
+        Map<Long, List<BookingServiceDetail>> serviceMap =
+                allServices.stream()
+                        .collect(Collectors.groupingBy(
+                                s -> s.getBooking().getId()
+                        ));
+
+        // 3. Map Booking -> DTO
+        List<BookingResponse> responses =
+                bookings.stream()
+                        .map(booking -> {
+
+                            // CHỈ KHÁC DÒNG NÀY
+                            BookingResponse response =
+                                    bookingMapper.toBookingHistoryResponse(booking);
+
+                            // bookingRooms lấy từ EntityGraph
+                            response.setBookingRooms(
+                                    booking.getBookingRooms()
+                                            .stream()
+                                            .map(bookingMapper::toBookingRoomResponse)
+                                            .toList()
+                            );
+
+                            // bookingServices lấy từ query riêng
+                            response.setBookingServices(
+                                    serviceMap
+                                            .getOrDefault(
+                                                    booking.getId(),
+                                                    Collections.emptyList()
+                                            )
+                                            .stream()
+                                            .map(bookingMapper::toBookingServiceDetailResponse)
+                                            .toList()
+                            );
+
+                            return response;
+                        })
+                        .toList();
+
+        // 4. Payment
         List<Payment> allPayments = paymentRepo.findByBookingIdIn(bookingIds);
 
-        // 5. Gom nhóm Payment theo bookingId trên RAM
         Map<Long, List<Payment>> paymentMap = allPayments.stream()
                 .collect(Collectors.groupingBy(p -> p.getBooking().getId()));
 
-        // 6. Enrich bằng hàm 2 tham số (KHÔNG BẮN THÊM SQL)
         responses.forEach(response -> {
-            List<Payment> payments = paymentMap.getOrDefault(response.getId(), Collections.emptyList());
+            List<Payment> payments =
+                    paymentMap.getOrDefault(response.getId(), Collections.emptyList());
+
             enrichWithRefundAmount(response, payments);
         });
 
@@ -240,10 +277,19 @@ public class BookingServiceImpl implements BookingService {
                 ));
 
         List<Long> roomTypeIds = new ArrayList<>(requestQtyMap.keySet());
-        List<RoomType> roomTypes = roomTypeRepo.findAllById(roomTypeIds);
 
-        if (roomTypes.size() != roomTypeIds.size()) {
-            throw new AppException(ErrorCode.ROOM_TYPE_NOT_FOUND);
+        Collections.sort(roomTypeIds);
+
+        List<RoomType> roomTypes = new ArrayList<>();
+
+        for (Long roomTypeId : roomTypeIds) {
+
+            RoomType roomType =
+                    roomTypeRepo.findByIdForUpdate(roomTypeId)
+                            .orElseThrow(() ->
+                                    new AppException(ErrorCode.ROOM_TYPE_NOT_FOUND));
+
+            roomTypes.add(roomType);
         }
 
         // 4. Tính số đêm
@@ -253,7 +299,7 @@ public class BookingServiceImpl implements BookingService {
         );
         if (nights < 1) nights = 1;
 
-        // 5. Kiểm tra phòng trống (CÓ LOCK CHỐNG OVERBOOKING) & Tính tiền phòng
+        // 5. Kiểm tra phòng trống & Tính tiền phòng
         BigDecimal totalRoomAmount = BigDecimal.ZERO;
         List<BookingRoom> bookingRooms = new ArrayList<>();
 
@@ -690,30 +736,6 @@ public class BookingServiceImpl implements BookingService {
                 response.setPaymentUrl(paymentUrl);
 
             } else {
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
                 Payment payment = paymentMapper.toFinalPayment(booking, remainingAmount, PaymentMethod.valueOf(paymentMethod.toUpperCase()));
                 paymentRepo.save(payment);

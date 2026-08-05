@@ -23,6 +23,13 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
 
     boolean existsByRoomNumber(String roomNumber);
 
+    @Query("""
+        SELECT COUNT(r)
+        FROM Room r
+        WHERE r.roomType.id = :roomTypeId
+        AND r.active = true
+        AND r.status <> 'MAINTENANCE'
+    """)
     long countByRoomTypeIdAndActiveTrue(Long roomTypeId);
 
     long countByStatus(com.example.hotel_booking.common.RoomStatus status);

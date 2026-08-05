@@ -20,7 +20,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -37,26 +36,26 @@ public class RoomServiceImpl implements RoomService {
     @Override
     @Transactional
     public RoomResponse createRoom(CreateRoomRequest request) {
-        
+
         if (roomRepository.existsByRoomNumber(request.getRoomNumber())) {
             throw new AppException(ErrorCode.ROOM_ALREADY_EXISTS);
         }
 
-        
+
         RoomType roomType = roomTypeRepository.findById(request.getRoomTypeId())
                 .orElseThrow(() -> new AppException(ErrorCode.ROOM_TYPE_NOT_FOUND));
 
-        
+
         Room room = roomMapper.toEntity(request);
 
-        
+
         room.setRoomType(roomType);
         room.setStatus(RoomStatus.AVAILABLE);
-        room.setActive(true); 
+        room.setActive(true);
 
         room = roomRepository.save(room);
 
-        
+
         auditLogService.saveLog("ROOM", "CREATE", room.getId(),
                 "Tạo phòng mới: " + room.getRoomNumber() + " (Loại: " + roomType.getName() + ")");
 
@@ -66,17 +65,17 @@ public class RoomServiceImpl implements RoomService {
     @Override
     @Transactional
     public void updateRoomStatus(Long roomId, RoomStatus status) {
-        
+
         Room room = roomRepository.findById(roomId)
                 .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
 
         RoomStatus oldStatus = room.getStatus();
 
-        
+
         room.setStatus(status);
         roomRepository.save(room);
 
-        
+
         auditLogService.saveLog("ROOM", "UPDATE_STATUS", roomId,
                 String.format("Thay đổi trạng thái phòng [%s] từ %s sang %s", room.getRoomNumber(), oldStatus, status));
     }
@@ -84,18 +83,18 @@ public class RoomServiceImpl implements RoomService {
     @Override
     @Transactional
     public RoomResponse updateRoom(Long id, UpdateRoomRequest request) {
-        
+
         Room room = roomRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
 
-        
+
         if (!room.getRoomNumber().equals(request.getRoomNumber())) {
             if (roomRepository.existsByRoomNumber(request.getRoomNumber())) {
                 throw new AppException(ErrorCode.ROOM_ALREADY_EXISTS);
             }
         }
 
-        
+
         if (!room.getRoomType().getId().equals(request.getRoomTypeId())) {
             RoomType newRoomType = roomTypeRepository.findById(request.getRoomTypeId())
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_TYPE_NOT_FOUND));
@@ -104,13 +103,13 @@ public class RoomServiceImpl implements RoomService {
 
         if (request.getStatus() != null) {
             if (room.getStatus() == RoomStatus.OCCUPIED ) {
-                
+
             } else {
                 room.setStatus(request.getStatus());
             }
         }
 
-        
+
         roomMapper.updateRoomFromRequest(request, room);
 
         Room updatedRoom = roomRepository.save(room);
@@ -150,29 +149,6 @@ public class RoomServiceImpl implements RoomService {
 
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public List<RoomResponse> getAvailableRooms(
-            Long roomTypeId,
-            LocalDateTime checkIn,
-            LocalDateTime checkOut
-    ) {
-
-        if (checkIn.isBefore(LocalDateTime.now())) {
-            throw new AppException(ErrorCode.CHECKIN_DATE_PAST);
-        }
-
-        if (checkOut.isBefore(checkIn) || checkOut.isEqual(checkIn)) {
-            throw new AppException(ErrorCode.INVALID_DATE_RANGE);
-        }
-
-        List<Room> rooms =
-                roomRepository.findAvailableRooms(roomTypeId, checkIn, checkOut);
-
-        return rooms.stream()
-                .map(roomMapper::toResponse)
-                .toList();
-    }
 
     @Override
     @Transactional

@@ -73,7 +73,7 @@ public class DashboardServiceImpl implements DashboardService {
                         .map(this::mapToBookingShortInfo)
                         .collect(Collectors.toList());
 
-        List<Room> allRooms = roomRepository.findAllWithRoomType();
+        List<Room> allRooms = roomRepository.findAllActiveWithRoomType();
 
         List<DashboardDTO.RoomTypeGroup> roomTypeGroups =
                 allRooms.stream()
@@ -129,7 +129,7 @@ public class DashboardServiceImpl implements DashboardService {
     @Override
     public DashboardDTO.AnalyticalStatsResponse getAnalyticalStats(LocalDate startDate, LocalDate endDate) {
 
-        
+        // 1. Khởi tạo mốc thời gian
         if (startDate == null) startDate = YearMonth.now().atDay(1);
         if (endDate == null) endDate = YearMonth.now().atEndOfMonth();
 
@@ -140,36 +140,36 @@ public class DashboardServiceImpl implements DashboardService {
                 BookingStatus.CONFIRMED, BookingStatus.CHECKED_IN, BookingStatus.CHECKED_OUT
         );
 
-        
+        // 2. Tính toán các chỉ số KPI
         BigDecimal totalRevenue = bookingRepository.calculateTotalRevenueByDateRange(revenueStatuses, start, end);
         totalRevenue = (totalRevenue != null) ? totalRevenue : BigDecimal.ZERO;
 
         long totalBookings = bookingRepository.countSuccessfulBookingsByDateRange(revenueStatuses, start, end);
 
-        
+        // 3. Tính Occupancy Rate và RevPar (Cập nhật logic theo số ngày)
         long occupiedRooms = bookingRepository.countOccupiedRoomsInDateRange(start, end);
         long totalRooms = roomRepository.countByActiveTrue();
 
-        
+        // Tính số ngày trong khoảng thời gian
         long totalDaysInPeriod = ChronoUnit.DAYS.between(startDate, endDate) + 1;
-        
+        // Tổng công suất phòng trong kỳ (số phòng * số ngày)
         long totalCapacityInNights = totalRooms * totalDaysInPeriod;
 
         double occupancyRate = (totalCapacityInNights > 0)
                 ? (double) occupiedRooms * 100 / totalCapacityInNights
                 : 0.0;
 
-        
+        // Tính RevPar (Dùng công thức chuẩn với totalCapacityInNights)
         double revPar = (totalCapacityInNights > 0)
                 ? totalRevenue.divide(BigDecimal.valueOf(totalCapacityInNights), 2, RoundingMode.HALF_UP).doubleValue()
                 : 0.0;
 
-        
+        // 4. Tính ADR
         double adr = (totalBookings > 0)
                 ? totalRevenue.divide(BigDecimal.valueOf(totalBookings), 2, RoundingMode.HALF_UP).doubleValue()
                 : 0.0;
 
-        
+        // 5. Truy vấn dữ liệu cho biểu đồ (STATUS DISTRIBUTION)
         List<DashboardDTO.StatusDistribution> statusDistributions = bookingRepository.countByEachStatusByDateRange(start, end)
                 .stream()
                 .map(row -> DashboardDTO.StatusDistribution.builder()
@@ -178,7 +178,7 @@ public class DashboardServiceImpl implements DashboardService {
                         .build())
                 .collect(Collectors.toList());
 
-        
+        // 6. Truy vấn dữ liệu cho biểu đồ (DAILY REVENUE)
         List<DashboardDTO.DailyRevenue> dailyRevenues = bookingRepository.getDailyRevenueByDateRange(revenueStatuses, start, end)
                 .stream()
                 .map(row -> DashboardDTO.DailyRevenue.builder()
@@ -187,7 +187,7 @@ public class DashboardServiceImpl implements DashboardService {
                         .build())
                 .collect(Collectors.toList());
 
-        
+        // 7. Truy vấn dữ liệu cho biểu đồ (MONTHLY REVENUE)
         List<DashboardDTO.MonthlyRevenue> monthlyRevenues = bookingRepository.getMonthlyRevenueByDateRange(revenueStatuses, start, end)
                 .stream()
                 .map(row -> DashboardDTO.MonthlyRevenue.builder()
@@ -197,7 +197,7 @@ public class DashboardServiceImpl implements DashboardService {
                         .build())
                 .collect(Collectors.toList());
 
-        
+        // 8. Trả về kết quả
         return DashboardDTO.AnalyticalStatsResponse.builder()
                 .totalRevenue(totalRevenue)
                 .occupancyRate(occupancyRate)

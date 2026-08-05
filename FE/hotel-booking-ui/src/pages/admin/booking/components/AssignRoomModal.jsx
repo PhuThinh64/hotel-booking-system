@@ -36,9 +36,18 @@ const AssignRoomModal = ({
         value={selectedRoomIdToAssign}
       >
         {availableRoomsForAssign.map((r) => (
-          <Select.Option key={r.id} value={r.id}>
-            Phòng {r.roomNumber} - Tầng {r.floor}
-          </Select.Option>
+         <Select.Option
+            key={r.id}
+            value={r.id}
+            disabled={r.status !== 'AVAILABLE'}
+        >
+            Phòng {r.roomNumber}
+            {` - Tầng ${r.floor} - `}
+            {r.status === 'AVAILABLE' && 'Trống'}
+            {r.status === 'OCCUPIED' && 'Đang sử dụng'}
+            {r.status === 'CLEANING' && 'Đang dọn'}
+            {r.status === 'MAINTENANCE' && 'Bảo trì'}
+        </Select.Option>
         ))}
       </Select>
     </Modal>

@@ -21,11 +21,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
-import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
@@ -280,50 +278,6 @@ public class RoomController {
                 .build();
     }
 
-    @Operation(
-            summary = "Retrieve Available Rooms",
-            description = "Get a list of available rooms for a specific room type and date range.",
-            security = {}
-    )
-    @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "200",
-                    description = SwaggerResponseMessages.SUCCESS
-            ),
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                    responseCode = "400",
-                    description = SwaggerResponseMessages.BAD_REQUEST
-            )
-    })
-    @GetMapping("/available")
-    public ApiResponse<List<RoomResponse>> getAvailableRooms(
-            @Parameter(
-                    description = ParameterDescriptions.ROOM_TYPE_ID,
-                    example = "3"
-            )
-            @RequestParam
-            Long roomTypeId,
-
-            @Parameter(
-                    description = "Target check-in date and time.",
-                    example = "2026-08-15T14:00:00"
-            )
-            @RequestParam
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
-            LocalDateTime checkIn,
-
-            @Parameter(
-                    description = "Target check-out date and time.",
-                    example = "2026-08-17T12:00:00"
-            )
-            @RequestParam
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
-            LocalDateTime checkOut
-    ) {
-        return ApiResponse.<List<RoomResponse>>builder()
-                .result(roomService.getAvailableRooms(roomTypeId, checkIn, checkOut))
-                .build();
-    }
 
     @Operation(
             summary = "Confirm Room Cleaned",

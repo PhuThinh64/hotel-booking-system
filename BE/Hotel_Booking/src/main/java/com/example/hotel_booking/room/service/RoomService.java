@@ -7,7 +7,6 @@ import com.example.hotel_booking.room.dto.UpdateRoomRequest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 public interface RoomService {
@@ -24,7 +23,6 @@ public interface RoomService {
 
     void deleteRoom(Long id);
 
-    List<RoomResponse> getAvailableRooms(Long roomTypeId, LocalDateTime checkIn, LocalDateTime checkOut);
 
     void confirmCleaned(Long roomId);
 

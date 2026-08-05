@@ -28,8 +28,12 @@ public class BookingRoomResponse {
     @Schema(description = "Price per night recorded at the time of booking", example = "500000.00")
     private BigDecimal priceAtOrder;
 
-    @Schema(description = "Name/Code of the room type", example = "DELUXE")
+    @Schema(description = "Name of the room type", example = "DELUXE")
     private String roomType;
+
+    @Schema(description = "Code of the room type", example = "1")
+    private Long roomTypeId;
+
 
     @Schema(description = "Current status of the booking room item", example = "PENDING")
     private BookingRoomStatus status;
